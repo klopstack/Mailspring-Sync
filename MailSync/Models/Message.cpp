@@ -10,11 +10,10 @@
 //
 
 #include "Message.hpp"
-#include "MailStore.hpp"
-#include "MailUtils.hpp"
+#include "File.hpp"
 #include "Folder.hpp"
 #include "MailStore.hpp"
-#include "File.hpp"
+#include "MailUtils.hpp"
 #include "Thread.hpp"
 
 using namespace std;
@@ -22,9 +21,9 @@ using namespace std;
 string Message::TABLE_NAME = "Message";
 
 /*
- The concept behind the "deletion placeholder" is that we need something 
+ The concept behind the "deletion placeholder" is that we need something
  in the database with the remoteFolder and remoteUID of the message until
- we finish syncing the deletion to the server. Otherwise the sync worker 
+ we finish syncing the deletion to the server. Otherwise the sync worker
  could put it back. (If you try to delete a lot of drafts and the deletion
  queue is long, the delay can be long enough for them to reappear.) Bad!
 
@@ -36,12 +35,12 @@ shared_ptr<Message> Message::messageWithDeletionPlaceholderFor(shared_ptr<Messag
     stubJSON["id"] = "deleted-" + MailUtils::idRandomlyGenerated();
     stubJSON["hMsgId"] = "deleted-" + stubJSON["id"].get<string>();
     stubJSON["subject"] = "Deleting...";
-    
+
     // very important to set v=0 so the Message gets both "added" and "deleted"
     // from the thread. Otherwise we could potentially cause double deletion
     // and get the counters off by one!
     stubJSON["v"] = 0;
-    
+
     auto stub = make_shared<Message>(stubJSON);
     auto nolabels = json::array();
     stub->setDraft(false);
@@ -54,28 +53,36 @@ shared_ptr<Message> Message::messageWithDeletionPlaceholderFor(shared_ptr<Messag
     return stub;
 }
 
-Message::Message(mailcore::IMAPMessage * msg, Folder & folder, time_t syncDataTimestamp) :
-MailModel(MailUtils::idForMessage(folder.accountId(), folder.path(), msg), folder.accountId(), 0)
-{
+Message::Message(mailcore::IMAPMessage * msg, Folder & folder, time_t syncDataTimestamp) : MailModel(MailUtils::idForMessage(folder.accountId(), folder.path(), msg), folder.accountId(), 0) {
     _skipThreadUpdatesAfterSave = false;
     _lastSnapshot = MessageEmptySnapshot;
     _data["_sa"] = syncDataTimestamp;
     _data["_suc"] = 0;
-    
+
     setClientFolder(&folder);
     setRemoteFolder(&folder);
 
     _data["remoteUID"] = msg->uid();
-    
+
     _data["files"] = json::array();
     _data["date"] = msg->header()->date() == -1 ? msg->header()->receivedDate() : msg->header()->date();
     _data["hMsgId"] = msg->header()->messageID() ? msg->header()->messageID()->UTF8Characters() : "no-header-message-id";
     _data["subject"] = msg->header()->subject() ? msg->header()->subject()->UTF8Characters() : "No Subject";
     _data["gMsgId"] = to_string(msg->gmailMessageID());
-    
+
+    // message size (if provided by the server)
+    try {
+        // Use NULL (leave absent) to represent unknown size. If server reports size > 0, store it.
+        if ((long long)msg->size() > 0) {
+            _data["size"] = (long long)msg->size();
+        }
+    } catch (...) {
+        // ignore
+    }
+
     Array * irt = msg->header()->inReplyTo();
     if (irt && irt->count() && irt->lastObject()) {
-        _data["rthMsgId"] = ((String*)irt->lastObject())->UTF8Characters();
+        _data["rthMsgId"] = ((String *)irt->lastObject())->UTF8Characters();
     } else {
         _data["rthMsgId"] = nullptr;
     }
@@ -91,34 +98,36 @@ MailModel(MailUtils::idForMessage(folder.accountId(), folder.path(), msg), folde
 
     _data["extraHeaders"] = json::object();
     auto extra = msg->header()->allExtraHeadersNames();
-    for (unsigned int ii = 0; ii < extra->count(); ii ++) {
+    for (unsigned int ii = 0; ii < extra->count(); ii++) {
         auto const key = (String *)extra->objectAtIndex(ii);
-        if (key == nullptr) continue;
+        if (key == nullptr)
+            continue;
         auto const val = msg->header()->extraHeaderValueForName(key);
-        if (val == nullptr) continue;
+        if (val == nullptr)
+            continue;
         _data["extraHeaders"][key->UTF8Characters()] = val->UTF8Characters();
     }
-    
+
     // inflate the participant fields
     _data["from"] = json::array();
     if (msg->header()->from()) {
         _data["from"] += MailUtils::contactJSONFromAddress(msg->header()->from());
     }
 
-    map<string, void*> fields = {
+    map<string, void *> fields = {
         {"to", msg->header()->to()},
         {"cc", msg->header()->cc()},
         {"bcc", msg->header()->bcc()},
         {"replyTo", msg->header()->replyTo()},
     };
-    
+
     for (auto const pair : fields) {
         string field = pair.first;
         Array * arr = (Array *)pair.second;
         _data[field] = json::array();
 
         if (arr != nullptr) {
-            for (unsigned int ii = 0; ii < arr->count(); ii ++) {
+            for (unsigned int ii = 0; ii < arr->count(); ii++) {
                 Address * addr = (Address *)arr->objectAtIndex(ii);
                 _data[field].push_back(MailUtils::contactJSONFromAddress(addr));
             }
@@ -126,16 +135,12 @@ MailModel(MailUtils::idForMessage(folder.accountId(), folder.path(), msg), folde
     }
 }
 
-Message::Message(SQLite::Statement & query) :
-    MailModel(query)
-{
+Message::Message(SQLite::Statement & query) : MailModel(query) {
     _skipThreadUpdatesAfterSave = false;
     _lastSnapshot = getSnapshot();
 }
 
-Message::Message(json json) :
-    MailModel(json)
-{
+Message::Message(json json) : MailModel(json) {
     _skipThreadUpdatesAfterSave = false;
     if (version() == 0) {
         _lastSnapshot = MessageEmptySnapshot;
@@ -270,16 +275,17 @@ void Message::setFiles(vector<File> & files) {
 
 /* Mailspring displays the "attachment" icon only if the following criteria are met.
    To make search and the thread list consistent, I'm moving the impl here to C++.
- 
+
  !f.contentId || f.size > 12 * 1024
  */
 int Message::fileCountForThreadList() {
-    if (!files().is_array()) return 0;
-    
+    if (!files().is_array())
+        return 0;
+
     int count = 0;
     for (auto & file : files()) {
         if (file["contentId"].is_null() || file["size"].get<int>() > 12 * 1024) {
-            count ++;
+            count++;
         }
     }
 
@@ -315,9 +321,7 @@ bool Message::_isIn(string roleAlsoLabelName) {
         string needle = roleAlsoLabelName;
         for (auto & l : remoteXGMLabels()) {
             string ln = l.get<string>();
-            auto it = std::search(ln.begin(), ln.end(), needle.begin(), needle.end(), [](char ch1, char ch2) {
-                return std::toupper(ch1) == std::toupper(ch2);
-            });
+            auto it = std::search(ln.begin(), ln.end(), needle.begin(), needle.end(), [](char ch1, char ch2) { return std::toupper(ch1) == std::toupper(ch2); });
             if (it != ln.end()) {
                 return true;
             }
@@ -325,7 +329,6 @@ bool Message::_isIn(string roleAlsoLabelName) {
     }
     return false;
 }
-
 
 uint32_t Message::remoteUID() {
     return _data["remoteUID"].get<uint32_t>();
@@ -391,15 +394,15 @@ json & Message::to() {
     return _data["to"];
 }
 
-json & Message::cc(){
+json & Message::cc() {
     return _data["cc"];
 }
 
-json & Message::bcc(){
+json & Message::bcc() {
     return _data["bcc"];
 }
 
-json & Message::replyTo(){
+json & Message::replyTo() {
     return _data["replyTo"];
 }
 
@@ -428,7 +431,7 @@ string Message::tableName() {
 }
 
 vector<string> Message::columnsForQuery() {
-    return vector<string>{"id", "data", "accountId", "version", "headerMessageId", "subject", "gMsgId", "date", "draft", "unread", "starred", "remoteUID", "remoteXGMLabels", "remoteFolderId", "threadId"};
+    return vector<string>{"id", "data", "accountId", "version", "headerMessageId", "subject", "gMsgId", "date", "draft", "unread", "starred", "remoteUID", "remoteXGMLabels", "remoteFolderId", "threadId", "from_email", "from_name", "size"};
 }
 
 void Message::bindToQuery(SQLite::Statement * query) {
@@ -444,6 +447,39 @@ void Message::bindToQuery(SQLite::Statement * query) {
     query->bind(":remoteFolderId", remoteFolderId());
     query->bind(":threadId", threadId());
     query->bind(":gMsgId", gMsgId());
+
+    // bind sender (first from entry's email and name) and size
+    string fromEmail = "";
+    string fromName = "";
+    try {
+        if (from().is_array() && from().size() > 0) {
+            auto f = from()[0];
+            if (f.count("email") && f["email"].is_string())
+                fromEmail = f["email"].get<string>();
+            if (f.count("name") && f["name"].is_string())
+                fromName = f["name"].get<string>();
+            // fallback: if email missing but a string is present and looks like an email, use it
+            if (fromEmail.empty() && f.is_string()) {
+                string s = f.get<string>();
+                if (s.find('@') != string::npos)
+                    fromEmail = s;
+                else if (fromName.empty())
+                    fromName = s;
+            }
+        }
+    } catch (...) {
+        fromEmail = "";
+        fromName = "";
+    }
+    query->bind(":from_email", fromEmail);
+    query->bind(":from_name", fromName);
+
+    if (_data.count("size") && _data["size"].is_number()) {
+        long long sz = _data["size"].get<long long>();
+        query->bind(":size", sz);
+    } else {
+        query->bind(":size"); // bind NULL when size is unknown
+    }
 }
 
 void Message::afterSave(MailStore * store) {
@@ -470,10 +506,10 @@ void Message::afterSave(MailStore * store) {
 
 void Message::afterRemove(MailStore * store) {
     MailModel::afterRemove(store);
-    
+
     // if we have a thread, keep the thread's folder, label, and unread counters
     // in sync by providing it with a before + after snapshot of this message.
-    
+
     if (threadId() == "") {
         return;
     }
@@ -481,7 +517,7 @@ void Message::afterRemove(MailStore * store) {
     if (thread == nullptr) {
         return;
     }
-    
+
     auto allLabels = store->allLabelsCache(accountId());
     thread->applyMessageAttributeChanges(_lastSnapshot, nullptr, allLabels);
     if (thread->folders().size() == 0) {
@@ -489,7 +525,7 @@ void Message::afterRemove(MailStore * store) {
     } else {
         store->save(thread.get());
     }
-    
+
     // Also delete our draft body
     SQLite::Statement removeBody(store->db(), "DELETE FROM MessageBody WHERE id = ?");
     removeBody.bind(1, id());

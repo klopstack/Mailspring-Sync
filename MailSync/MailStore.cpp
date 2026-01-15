@@ -45,7 +45,7 @@ MessageAttributes MessageAttributesForMessage(IMAPMessage * msg) {
     m.unread = bool(!(msg->flags() & MessageFlagSeen));
     m.starred = bool(msg->flags() & MessageFlagFlagged);
     m.labels = std::vector<std::string>{};
-    
+
     Array * labels = msg->gmailLabels();
     bool draftLabelPresent = false;
     bool trashSpamLabelPresent = false;
@@ -65,9 +65,9 @@ MessageAttributes MessageAttributesForMessage(IMAPMessage * msg) {
         }
         sort(m.labels.begin(), m.labels.end());
     }
-    
+
     m.draft = (bool(msg->flags() & MessageFlagDraft) || draftLabelPresent) && !trashSpamLabelPresent;
-    
+
     return m;
 }
 
@@ -87,11 +87,33 @@ MailStore::MailStore() :
     _labelCacheVersion(0),
     _labelCache()
 {
+    // Debugging: print resolved DB path and effective UID to help test diagnostics
+    try {
+        std::string dbPath = MailUtils::getEnvUTF8("CONFIG_DIR_PATH") + FS_PATH_SEP + "edgehill.db";
+        std::cout << "DEBUG: MailStore opening DB at '" << dbPath << "' (uid=" << getuid() << ")" << std::endl;
+    } catch (...) {
+        std::cout << "DEBUG: MailStore opening DB (unable to resolve CONFIG_DIR_PATH)" << std::endl;
+    }
+
     _db.setBusyTimeout(10 * 1000);
-    
+
     // Note: These are properties of the connection, so they must be set regardless
     // of whether the database setup queries are run.
-    
+
+    // Write a small debug file into CONFIG_DIR_PATH so we can tell which path MailStore resolved
+    try {
+        std::string cfg = MailUtils::getEnvUTF8("CONFIG_DIR_PATH");
+        std::string debugPath = cfg + FS_PATH_SEP + ".mailsync-debug";
+        FILE *f = fopen(debugPath.c_str(), "a");
+        if (f) {
+            time_t now = time(0);
+            fprintf(f, "MailStore ctor: opening DB at %s (uid=%d) time=%ld\n", (cfg + FS_PATH_SEP + "edgehill.db").c_str(), getuid(), now);
+            fclose(f);
+        }
+    } catch (...) {
+        // swallow
+    }
+
     // https://www.sqlite.org/intern-v-extern-blob.html
     // A database page size of 8192 or 16384 gives the best performance for large BLOB I/O.
     SQLite::Statement(_db, "PRAGMA journal_mode = WAL").executeStep();
@@ -100,7 +122,7 @@ MailStore::MailStore() :
     SQLite::Statement(_db, "PRAGMA main.synchronous = NORMAL").exec();
 }
 
-static int CURRENT_VERSION = 9;
+static int CURRENT_VERSION = 10;
 static string VACUUM_TIME_KEY = "VACUUM_TIME";
 static time_t VACUUM_INTERVAL = 14 * 24 * 60 * 60; // 14 days
 
@@ -109,9 +131,9 @@ void MailStore::migrate() {
     uv.executeStep();
     int version = uv.getColumn(0).getInt();
     uv.reset();
-    
+
     string verb = version == 0 ? "Setup" : "Migration";
-    
+
     if (version < 1) {
         for (string sql : V1_SETUP_QUERIES) {
             SQLite::Statement(_db, sql).exec();
@@ -156,6 +178,73 @@ void MailStore::migrate() {
         }
     }
 
+    // V10: Add message sender and size columns (if upgrading from older DBs)
+    if (version < 10) {
+        for (string sql : V10_SETUP_QUERIES) {
+            SQLite::Statement(_db, sql).exec();
+        }
+
+        // Debug note: record that V10 migration is running
+        try {
+            std::string cfg = MailUtils::getEnvUTF8("CONFIG_DIR_PATH");
+            std::string debugPath = cfg + FS_PATH_SEP + ".mailsync-debug";
+            FILE *f = fopen(debugPath.c_str(), "a");
+            if (f) {
+                time_t now = time(0);
+                fprintf(f, "Running V10 migration at %ld\n", now);
+                fclose(f);
+            }
+        } catch (...) {}
+
+        // Populate `from_email`, `from_name` and `size` columns from the stored JSON `data` for existing messages
+        cout << "\nPopulating Message.from_email/from_name and Message.size columns...\n";
+        cout.flush();
+        SQLite::Statement sel(_db, "SELECT id, data FROM Message");
+        SQLite::Statement upd(_db, "UPDATE Message SET `from_email` = ?, `from_name` = ?, size = ? WHERE id = ?");
+        while (sel.executeStep()) {
+            string id = sel.getColumn(0).getString();
+            string data = sel.getColumn(1).getString();
+            try {
+                auto j = json::parse(data);
+                string fromEmail = "";
+                string fromName = "";
+                if (j.contains("from") && j["from"].is_array() && j["from"].size() > 0) {
+                    auto f = j["from"][0];
+                    if (f.contains("email") && f["email"].is_string())
+                        fromEmail = f["email"].get<string>();
+                    if (f.contains("name") && f["name"].is_string())
+                        fromName = f["name"].get<string>();
+                    // fallback: if email missing but value is string and contains @, use it
+                    if (fromEmail.empty() && f.is_string()) {
+                        string s = f.get<string>();
+                        if (s.find('@') != string::npos)
+                            fromEmail = s;
+                    }
+                }
+                long long size = 0;
+                bool sizePresent = false;
+                if (j.contains("size") && j["size"].is_number()) {
+                    size = j["size"].get<long long>();
+                    sizePresent = true;
+                }
+
+                upd.reset();
+                upd.clearBindings();
+                upd.bind(1, fromEmail);
+                upd.bind(2, fromName);
+                if (sizePresent)
+                    upd.bind(3, size);
+                else
+                    upd.bind(3); // bind NULL when size unknown
+                upd.bind(4, id);
+                upd.exec();
+            }
+            catch (...) {
+                // ignore parse errors - don't fail migration on single row
+            }
+        }
+    }
+
     // Update the version flag. Note that we don't want to go from v3 back to v2
     // if the user re-opens an older version of the app.
     if (version < CURRENT_VERSION) {
@@ -172,10 +261,10 @@ void MailStore::migrate() {
     if (time(0) - vacuumTime > VACUUM_INTERVAL) {
         cout << "\nRunning Vacuum\n";
         cout.flush();
-        
+
         // Update vacuum timer first so we don't re-attempt vacuuming if it fails
         saveKeyValue(VACUUM_TIME_KEY, to_string(time(0)));
-        
+
         try {
             SQLite::Statement(_db, "VACUUM").exec();
         } catch (std::exception & ex) {
@@ -192,7 +281,7 @@ void MailStore::assertCorrectThread() {
      per worker, it's extremely important that all calls to each MailStore are made
      from a single thread. We capture a threadId when you open the MailStore and
      require that all subseuqent calls are from that thread.
-     
+
      Otherwise, it's possible for two threads to bind to the same prepared query,
      prepare half the values, and execute it, creating a rediculous data inconsistency.
      */
@@ -209,7 +298,7 @@ void MailStore::resetForAccount(string accountId) {
         statement.bind(1, accountId);
         statement.exec();
     }
-    
+
     // reset the metadata stream cursor so we re-fetch metadata on resync
     saveKeyValue("cursor-" + accountId, "0");
 
@@ -227,7 +316,7 @@ map<uint32_t, MessageAttributes> MailStore::fetchMessagesAttributesInRange(Range
     query.bind(1, folder.accountId());
     query.bind(2, folder.id());
     query.bind(3, (long long)(range.location));
-    
+
     // Range is uint64_t, and "*" is represented by UINT64_MAX.
     // SQLite doesn't support UINT64 and the conversion /can/ fail.
     // Additionally, clamp to LLONG_MAX if the sum would overflow.
@@ -250,7 +339,7 @@ map<uint32_t, MessageAttributes> MailStore::fetchMessagesAttributesInRange(Range
         attrs.uid = uid;
         attrs.starred = query.getColumn("starred").getInt() != 0;
         attrs.unread = query.getColumn("unread").getInt() != 0;
-        
+
         vector<string> labels{};
         for (const auto i : json::parse(query.getColumn("remoteXGMLabels").getString())) {
             labels.push_back(i.get<string>());
@@ -259,7 +348,7 @@ map<uint32_t, MessageAttributes> MailStore::fetchMessagesAttributesInRange(Range
 
         results[uid] = attrs;
     }
-    
+
     return results;
 }
 
@@ -376,7 +465,7 @@ void MailStore::save(MailModel * model) {
     model->beforeSave(this);
 
     auto tableName = model->tableName();
-    
+
     if (model->version() > 1) {
         if (!_saveUpdateQueries.count(tableName)) {
             string pairs{""};
@@ -387,7 +476,7 @@ void MailStore::save(MailModel * model) {
                 pairs += (col + " = :" + col + ",");
             }
             pairs.pop_back();
-            
+
             auto stmt = make_shared<SQLite::Statement>(this->_db, "UPDATE " + tableName + " SET " + pairs + " WHERE id = :id");
             _saveUpdateQueries[tableName] = stmt;
         }
@@ -396,7 +485,7 @@ void MailStore::save(MailModel * model) {
         query->clearBindings();
         model->bindToQuery(query.get());
         query->exec();
-        
+
     } else {
         if (!_saveInsertQueries.count(tableName)) {
             string cols{""};
@@ -407,11 +496,11 @@ void MailStore::save(MailModel * model) {
             }
             cols.pop_back();
             values.pop_back();
-            
+
             auto stmt = make_shared<SQLite::Statement>(this->_db, "INSERT INTO " + tableName + " (" + cols + ") VALUES (" + values + ")");
             _saveInsertQueries[tableName] = stmt;
         }
-        
+
         auto query = _saveInsertQueries[tableName];
         query->reset();
         query->clearBindings();
@@ -562,5 +651,3 @@ void MailStore::saveDetachedPluginMetadata(Metadata & m) {
 void MailStore::setStreamDelay(int streamMaxDelay) {
     _streamMaxDelay = streamMaxDelay;
 }
-
-

@@ -14,23 +14,23 @@
 
 #include <stdio.h>
 
+#include <MailCore/MailCore.h>
 #include <atomic>
 #include <iostream>
 #include <string>
 #include <vector>
-#include <MailCore/MailCore.h>
 
 #include "Account.hpp"
-#include "MailStore.hpp"
-#include "MailProcessor.hpp"
 #include "DeltaStream.hpp"
 #include "Folder.hpp"
+#include "MailProcessor.hpp"
+#include "MailStore.hpp"
 
 using namespace mailcore;
 
 class SyncWorker {
     IMAPSession session;
-    
+
     MailStore * store;
     MailProcessor * processor;
     shared_ptr<spdlog::logger> logger;
@@ -39,11 +39,11 @@ class SyncWorker {
     std::atomic<bool> idleShouldReloop{false};
     int iterationsSinceLaunch;
     vector<string> idleFetchBodyIDs;
+    vector<string> idleFetchSizeIDs;
     std::mutex idleMtx;
     std::condition_variable idleCv;
 
-public:
-    
+  public:
     shared_ptr<Account> account;
 
     SyncWorker(shared_ptr<Account> account);
@@ -51,29 +51,26 @@ public:
 
 #pragma mark Foreground Worker
 
-public:
-    
+  public:
     void idleInterrupt();
     void idleQueueBodiesToSync(vector<string> & ids);
+    void idleQueueSizesToSync(vector<string> & ids);
     void idleCycleIteration();
 
-    
 #pragma mark Background Worker
 
-public:
-    
+  public:
     bool syncNow();
 
     void markAllFoldersBusy();
 
     std::vector<std::shared_ptr<Folder>> syncFoldersAndLabels();
 
-private:
-    
+  private:
     void ensureRootMailspringFolder(vector<string> containerFolderComponents, Array * remoteFolders);
 
     bool initialSyncFolderIncremental(Folder & folder, IMAPFolderStatus & remoteStatus);
-        
+
     void syncFolderUIDRange(Folder & folder, Range range, bool heavyInitialRequest, vector<shared_ptr<Message>> * syncedMessages = nullptr);
 
     void syncFolderChangesViaCondstore(Folder & folder, IMAPFolderStatus & remoteStatus, bool mustSyncAll);
@@ -81,14 +78,14 @@ private:
     void fetchRangeInFolder(String * folder, std::string folderId, Range range);
 
     void cleanMessageCache(Folder & folder);
-    
+
     long long countBodiesDownloaded(Folder & folder);
     long long countBodiesNeeded(Folder & folder);
     time_t maxAgeForBodySync(Folder & folder);
     bool shouldCacheBodiesInFolder(Folder & folder);
     bool syncMessageBodies(Folder & folder, IMAPFolderStatus & remoteStatus);
     void syncMessageBody(Message * message);
+    void syncMessageSize(Message * message);
 };
-
 
 #endif /* SyncWorker_hpp */

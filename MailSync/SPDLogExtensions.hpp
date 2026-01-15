@@ -32,10 +32,10 @@ void runFlushLoop() {
                 continue; // detect, avoid spurious wakes
             }
         }
-        
+
         // Debounce 1sec for more messages to arrive
 		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        
+
         {
             // Perform flush
             unique_lock<mutex> lck(spdFlushMtx);
@@ -48,35 +48,38 @@ void runFlushLoop() {
 class SPDFlusherSink : public spdlog::sinks::sink {
 public:
     std::thread * flushThread;
-    
+
     SPDFlusherSink() {
         flushThread = new std::thread(runFlushLoop);
-        
+
     }
     ~SPDFlusherSink() {
         lock_guard<mutex> lck(spdFlushMtx);
         spdFlushExit = true;
         spdFlushCV.notify_one();
     }
-    
+
     void log(const spdlog::details::log_msg& msg) {
         // ensure we have a flush queued
         lock_guard<mutex> lck(spdFlushMtx);
         spdUnflushed += 1;
         spdFlushCV.notify_one();
     }
-    
+
     void flush() {
         // no-op
     }
 };
 
+#include "ThreadUtils.h"
+
 class SPDFormatterWithThreadNames : public spdlog::pattern_formatter {
 public:
     SPDFormatterWithThreadNames(const std::string& pattern) : spdlog::pattern_formatter(pattern) {}
-    
+
     void format(spdlog::details::log_msg& msg) override {
-        msg.logger_name = GetThreadName(msg.thread_id);
+        std::string *tn = GetThreadName(msg.thread_id);
+        if (tn) msg.logger_name = tn;
         spdlog::pattern_formatter::format(msg);
     }
 };
