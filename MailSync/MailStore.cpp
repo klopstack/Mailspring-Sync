@@ -180,7 +180,24 @@ void MailStore::migrate() {
 
     // V10: Add message sender and size columns (if upgrading from older DBs)
     if (version < 10) {
+        // Check if columns already exist (they may exist in fresh DBs created with V1_SETUP_QUERIES
+        // that already include these columns in the CREATE TABLE statement)
+        bool hasFromEmailCol = false;
+        SQLite::Statement colCheck(_db, "PRAGMA table_info(Message)");
+        while (colCheck.executeStep()) {
+            string colName = colCheck.getColumn(1).getString();
+            if (colName == "from_email") {
+                hasFromEmailCol = true;
+                break;
+            }
+        }
+
         for (string sql : V10_SETUP_QUERIES) {
+            // Skip ALTER TABLE ADD COLUMN statements if the columns already exist
+            if (hasFromEmailCol && sql.find("ALTER TABLE") != string::npos && sql.find("ADD COLUMN") != string::npos) {
+                continue;
+            }
+            // CREATE INDEX IF NOT EXISTS is safe to run always
             SQLite::Statement(_db, sql).exec();
         }
 
