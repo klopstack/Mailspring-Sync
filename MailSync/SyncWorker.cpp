@@ -55,6 +55,7 @@ SyncWorker::SyncWorker(shared_ptr<Account> account) :
     store(new MailStore()),
     account(account),
     unlinkPhase(1),
+    iterationsSinceLaunch(0),
     logger(spdlog::get("logger")),
     processor(new MailProcessor(account, store)),
     session(IMAPSession())
@@ -169,43 +170,7 @@ void SyncWorker::idleCycleIteration()
             syncMessageSize(msg.get());
         }
     }
-
-    // Run size requests from the client
-    while (true) {
-        string id;
-        {
-            std::unique_lock<std::mutex> lck(idleMtx);
-            if (idleFetchSizeIDs.empty()) {
-                break;
-            }
-            id = idleFetchSizeIDs.back();
-            idleFetchSizeIDs.pop_back();
-        }
-        Query byId = Query().equal("id", id);
-        auto msg = store->find<Message>(byId);
-        if (msg.get() != nullptr) {
-            logger->info("Fetching size for message ID {}", msg->id());
-
-            // Check if session is connected before attempting fetch
-            if (session.isDisconnected()) {
-                logger->warn("IMAP session not connected, connecting before size fetch");
-                ErrorCode connectErr = ErrorCode::ErrorNone;
-                session.connectIfNeeded(&connectErr);
-                if (connectErr != ErrorCode::ErrorNone) {
-                    logger->error("Failed to connect for size fetch: {}", ErrorCodeToTypeMap[connectErr]);
-                    continue;
-                }
-                session.loginIfNeeded(&connectErr);
-                if (connectErr != ErrorCode::ErrorNone) {
-                    logger->error("Failed to login for size fetch: {}", ErrorCodeToTypeMap[connectErr]);
-                    continue;
-                }
-            }
-
-            syncMessageSize(msg.get());
-        }
-    }
-    
+       
     if (idleShouldReloop) {
         idleShouldReloop = false;
         return;
@@ -216,23 +181,24 @@ void SyncWorker::idleCycleIteration()
     if ((iterationsSinceLaunch % 10) == 0) {
         try {
             processor->backfillMessageSenderAndSize();
+        } catch (const std::exception & ex) {
+            logger->warn("backfill sender/size failed: {}", ex.what());
         } catch (...) {
-            // don't crash the idle loop if this fails
+            logger->warn("backfill sender/size failed with unknown error");
         }
+
         try {
-            // Save a process state so the UI can prompt if desired
             SQLite::Statement countQ(store->db(), "SELECT COUNT(*) FROM Message WHERE accountId = ? AND size IS NULL");
             countQ.bind(1, account->id());
             long long missing = 0;
             if (countQ.executeStep()) {
                 missing = countQ.getColumn(0).getInt64();
             }
-            // Persist a small ProcessState to let the UI know about missing sizes
+
             vector<json> items{};
             items.push_back({{"accountId", account->id()}, {"id", account->id()}, {"missingSizes", missing}});
             SharedDeltaStream()->emit(DeltaStreamItem("persist", "ProcessState", items), 0);
 
-            // If we have missing sizes, queue up a small batch to fetch now
             if (missing > 0) {
                 SQLite::Statement sel(store->db(), "SELECT id FROM Message WHERE accountId = ? AND size IS NULL LIMIT 200");
                 sel.bind(1, account->id());
@@ -240,13 +206,15 @@ void SyncWorker::idleCycleIteration()
                 while (sel.executeStep()) {
                     ids.push_back(sel.getColumn(0).getString());
                 }
-                if (ids.size()) {
+                if (!ids.empty()) {
                     idleQueueSizesToSync(ids);
                     idleInterrupt();
                 }
             }
+        } catch (const std::exception & ex) {
+            logger->warn("missing-size scan failed: {}", ex.what());
         } catch (...) {
-            // don't crash the idle loop if this fails
+            logger->warn("missing-size scan failed with unknown error");
         }
     }
 
