@@ -458,8 +458,8 @@ void MailProcessor::backfillMessageSenderAndSize()
     bool more = true;
     int iterations = 0;
 
-    SQLite::Statement select(store->db(), "SELECT id, data FROM Message WHERE accountId = ? AND ((from_email IS NULL OR from_email = '') OR size IS NULL) LIMIT ?");
-    SQLite::Statement update(store->db(), "UPDATE Message SET `from_email` = ?, `from_name` = ?, size = ? WHERE id = ?");
+    SQLite::Statement select(store->db(), "SELECT id, data FROM Message WHERE accountId = ? AND ((fromEmail IS NULL OR fromEmail = '') OR size IS NULL) LIMIT ?");
+    SQLite::Statement update(store->db(), "UPDATE Message SET `fromEmail` = ?, `fromName` = ?, size = ? WHERE id = ?");
 
     while (more && iterations < maxIterations) {
         iterations++;

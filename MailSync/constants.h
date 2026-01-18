@@ -219,13 +219,13 @@ static vector<string> V9_SETUP_QUERIES = {
     "CREATE INDEX IF NOT EXISTS EventRecurrenceId ON Event(calendarId, icsuid, recurrenceId)",
 };
 
-// V10: Add message sender (email + name) and size columns, and indexes for from_email, size, date and subject
+// V10: Add message sender (email + name) and size columns, and indexes for fromEmail, size, date and subject
 static vector<string> V10_SETUP_QUERIES = {
-    "ALTER TABLE `Message` ADD COLUMN `from_email` TEXT",
-    "ALTER TABLE `Message` ADD COLUMN `from_name` TEXT",
+    "ALTER TABLE `Message` ADD COLUMN `fromEmail` TEXT",
+    "ALTER TABLE `Message` ADD COLUMN `fromName` TEXT",
     "ALTER TABLE `Message` ADD COLUMN `size` INTEGER",
-    "CREATE INDEX IF NOT EXISTS MessageFromIndex ON Message(accountId, `from_email`)",
-    "CREATE INDEX IF NOT EXISTS MessageFromNameIndex ON Message(accountId, `from_name`)",
+    "CREATE INDEX IF NOT EXISTS MessageFromIndex ON Message(accountId, `fromEmail`)",
+    "CREATE INDEX IF NOT EXISTS MessageFromNameIndex ON Message(accountId, `fromName`)",
     "CREATE INDEX IF NOT EXISTS MessageSizeIndex ON Message(size)",
     "CREATE INDEX IF NOT EXISTS MessageDateIndex ON Message(date DESC)",
     "CREATE INDEX IF NOT EXISTS MessageSubjectIndex ON Message(subject)",
