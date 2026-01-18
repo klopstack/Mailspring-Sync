@@ -100,7 +100,7 @@ std::string MailUtils::toBase58(const unsigned char * pbegin, size_t len)
             *it = carry % 58;
             carry /= 58;
         }
-
+        
         assert(carry == 0);
         length = i;
         pbegin++;
@@ -168,7 +168,7 @@ string MailUtils::getEnvUTF8(string key) {
     size_t wKeyLength = MultiByteToWideChar( CP_UTF8, 0, key.c_str(), (int)key.length(), 0, 0 );
     std::wstring wKey( wKeyLength, L'\0' );
     MultiByteToWideChar( CP_UTF8, 0, key.c_str(), (int)key.length(), &wKey[0], (int)wKey.length());
-
+    
     wchar_t wstr[MAX_PATH];
     size_t len = _countof(wstr);
     _wgetenv_s(&len, wstr, len, wKey.c_str());
@@ -188,12 +188,12 @@ json MailUtils::merge(const json &a, const json &b)
 {
     json result = a.flatten();
     json tmp = b.flatten();
-
+    
     for (json::iterator it = tmp.begin(); it != tmp.end(); ++it)
     {
         result[it.key()] = it.value();
     }
-
+    
     return result.unflatten();
 }
 
@@ -217,7 +217,7 @@ Address * MailUtils::addressFromContactJSON(json & j) {
 }
 
 string MailUtils::contactKeyForEmail(string email) {
-
+    
     // lowercase the email
     transform(email.begin(), email.end(), email.begin(), ::tolower);
 
@@ -231,7 +231,7 @@ string MailUtils::contactKeyForEmail(string email) {
             return "";
         }
     }
-
+    
     // check for non-prefix scenarios
     if (email.find("@noreply") != string::npos) { // x@noreply.github.com
         return "";
@@ -242,7 +242,7 @@ string MailUtils::contactKeyForEmail(string email) {
     if (email.find("noreply@") != string::npos) { // reservations-noreply@bla.com
         return "";
     }
-
+    
     return email;
 }
 
@@ -305,7 +305,7 @@ string MailUtils::roleForFolder(string containerFolderPath, string mainPrefix, I
 
 string MailUtils::roleForFolderViaFlags(string mainPrefix, IMAPFolder * folder) {
     IMAPFolderFlag flags = folder->flags();
-
+    
     if (flags & IMAPFolderFlagAll) {
         return "all";
     }
@@ -344,7 +344,7 @@ string MailUtils::roleForFolderViaPath(string containerFolderPath, string mainPr
     if ((mainPrefix.size() > 0) && (path.size() > mainPrefix.size()) && (path.substr(0, mainPrefix.size()) == mainPrefix)) {
         path = path.substr(mainPrefix.size());
     }
-
+    
     // Strip the delimiter if the delimiter is the first character after stripping prefix
     if (path.size() > 1 && path.substr(0, 1) == delimiter) {
         path = path.substr(1);
@@ -389,7 +389,7 @@ string MailUtils::roleForFolderViaPath(string containerFolderPath, string mainPr
 string MailUtils::pathForFile(string root, File * file, bool create) {
     string id = file->id();
     transform(id.begin(), id.end(), id.begin(), ::tolower);
-
+    
     if (create && !create_directory(root)) { return ""; }
     string path = root + FS_PATH_SEP + id.substr(0, 2);
     if (create && !create_directory(path)) { return ""; }
@@ -397,7 +397,7 @@ string MailUtils::pathForFile(string root, File * file, bool create) {
     if (create && !create_directory(path)) { return ""; }
     path += FS_PATH_SEP + id;
     if (create && !create_directory(path)) { return ""; }
-
+    
     path += FS_PATH_SEP + file->safeFilename();
     return path;
 }
@@ -408,7 +408,7 @@ shared_ptr<Label> MailUtils::labelForXGMLabelName(string mlname, vector<shared_p
             return label;
         }
     }
-
+    
     // \\Inbox should match INBOX
     if (mlname.substr(0, 1) == "\\") {
         mlname = mlname.substr(1, mlname.length() - 1);
@@ -420,11 +420,11 @@ shared_ptr<Label> MailUtils::labelForXGMLabelName(string mlname, vector<shared_p
             if (path.substr(0, 8) == "[gmail]/") {
                 path = path.substr(8, path.length() - 8);
             }
-
+                
             if (path == mlname) {
                 return label;
             }
-
+            
             // sent => [Gmail]/Sent Mail (sent), draft => [Gmail]/Drafts (drafts)
             if ((label->role() == mlname) || (label->role() == mlname + "s")) {
                 return label;
@@ -439,7 +439,7 @@ shared_ptr<Label> MailUtils::labelForXGMLabelName(string mlname, vector<shared_p
 vector<Query> MailUtils::queriesForUIDRangesInIndexSet(string remoteFolderId, IndexSet * set) {
     vector<Query> results {};
     vector<uint32_t> uids {};
-
+    
     for (int ii = 0; ii < set->rangesCount(); ii++) {
         uint64_t left = RangeLeftBound(set->allRanges()[ii]);
         uint64_t right = RangeRightBound(set->allRanges()[ii]);
@@ -500,7 +500,7 @@ string MailUtils::idForFile(Message * message, Attachment * attachment) {
     vector<unsigned char> hash(32);
     string src_str = message->id() + ":" + message->accountId();
     bool has_something_unique = false;
-
+    
     if (attachment->partID() != nullptr) {
         src_str = src_str + ":" + attachment->partID()->UTF8Characters();
         has_something_unique = true;
@@ -509,13 +509,13 @@ string MailUtils::idForFile(Message * message, Attachment * attachment) {
         src_str = src_str + ":" + attachment->uniqueID()->UTF8Characters();
         has_something_unique = true;
     }
-
+    
     if (has_something_unique == false) {
         string description = attachment->description()->UTF8Characters();
         spdlog::get("logger")->warn("Encountered an attachment with no partID or uniqueID to form a unique ID. Falling back to description. Debug Info:\n" + description);
         src_str = src_str + ":" + description;
     }
-
+    
     picosha2::hash256(src_str.begin(), src_str.end(), hash.begin(), hash.end());
     return toBase58(hash.data(), 30);
 }
@@ -524,7 +524,7 @@ string MailUtils::idRandomlyGenerated() {
     static string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
     string result;
     result.resize(40);
-
+    
     if (!calledsrand) {
         srand((unsigned int)time(0));
         calledsrand = true;
@@ -584,45 +584,45 @@ string MailUtils::idForCalendar(string accountId, string url) {
 }
 
 string MailUtils::idForMessage(string accountId, string folderPath, IMAPMessage * msg) {
-
+    
     /* I want to correct flaws in the ID algorithm, but changing this will cause
      duplicate messages to appear in threads and message metadata to be lost.
-
+     
      - Use the new scheme for ANY messages dated > 2/15/2018
      - Use the new scheme for ALL messages if identity was created after 2/15/2018
-
+     
      This should ensure that:
      - old users get old IDs on old mail, new IDs on new mail
      - new users get new IDs on all mail
-
+     
      Scheme is 0 or 1
     */
     int scheme = _baseIDSchemaVersion;
     if (msg->header()->date() > SCHEMA_1_START_DATE || msg->header()->date() <= 0) {
         scheme = 1;
     }
-
+    
     Array * addresses = new Array();
     addresses->addObjectsFromArray(msg->header()->to());
     addresses->addObjectsFromArray(msg->header()->cc());
     addresses->addObjectsFromArray(msg->header()->bcc());
-
+    
     Array * emails = new Array();
     for (int i = 0; i < addresses->count(); i ++) {
         Address * addr = (Address*)addresses->objectAtIndex(i);
         emails->addObject(addr->mailbox());
     }
-
+    
     emails->sortArray(compareEmails, NULL);
-
+    
     String * participants = emails->componentsJoinedByString(MCSTR(""));
 
     addresses->release();
     emails->release();
-
+    
     String * messageID = msg->header()->isMessageIDAutoGenerated() ? MCSTR("") : msg->header()->messageID();
     String * subject = msg->header()->subject();
-
+    
     string src_str = accountId;
     src_str = src_str.append("-");
     if (scheme == 1) {
@@ -636,7 +636,7 @@ string MailUtils::idForMessage(string accountId, string folderPath, IMAPMessage 
         } else {
             // This message has no date information and subject + recipients alone are not enough
             // to build a stable ID across the mailbox.
-
+            
             // As a fallback, we use the Folder + UID. The UID /will/ change when UIDInvalidity
             // occurs and if the message is moved to another folder, but seeing it as a delete +
             // create (and losing metadata) is better than sync thrashing caused by it thinking
@@ -791,14 +791,14 @@ void MailUtils::configureSessionForAccount(SMTPSession & session, shared_ptr<Acc
 
 IMAPMessagesRequestKind MailUtils::messagesRequestKindFor(IndexSet * capabilities, bool heavyOrNeedToComputeIDs) {
     bool gmail = capabilities->containsIndex(IMAPCapabilityGmail);
-
+    
     if (heavyOrNeedToComputeIDs) {
         if (gmail) {
             return IMAPMessagesRequestKind(IMAPMessagesRequestKindHeaders | IMAPMessagesRequestKindInternalDate | IMAPMessagesRequestKindFlags | IMAPMessagesRequestKindGmailLabels | IMAPMessagesRequestKindGmailThreadID | IMAPMessagesRequestKindGmailMessageID | IMAPMessagesRequestKindSize);
         }
         return IMAPMessagesRequestKind(IMAPMessagesRequestKindHeaders | IMAPMessagesRequestKindInternalDate | IMAPMessagesRequestKindFlags | IMAPMessagesRequestKindSize);
     }
-
+    
     if (gmail) {
         return IMAPMessagesRequestKind(IMAPMessagesRequestKindFlags | IMAPMessagesRequestKindGmailLabels);
     }
@@ -825,7 +825,7 @@ void MailUtils::wakeAllWorkers() {
         lock_guard<mutex> lck(workerSleepMtx);
         workerSleepCV.notify_all();
     }
-
+    
     // wake the metadata expiration thread to look for metadata
     // that may have missed it's expiration
     WakeAllMetadataExpirationWorkers();
