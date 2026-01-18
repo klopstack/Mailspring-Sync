@@ -708,7 +708,7 @@ void TaskProcessor::performLocalChangeOnMessages(Task * task, void (*modifyLocal
             }
             for (auto msg : models.messages) {
                 if (threads.count(msg->threadId())) {
-                    threads[msg->threadId()]->applyMessageAttributeChanges(MessageEmptySnapshot, msg.get(), allLabels);
+                    threads[msg->threadId()]->applyMessageAttributeChanges(MessageEmptySnapshot, msg.get(), allLabels, store);
                 }
             }
             for (auto pair : threads) {

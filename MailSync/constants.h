@@ -231,6 +231,19 @@ static vector<string> V10_SETUP_QUERIES = {
     "CREATE INDEX IF NOT EXISTS MessageSubjectIndex ON Message(subject)",
 };
 
+// V11: Denormalize newest non-draft sender and total size onto Thread
+static vector<string> V11_SETUP_QUERIES = {
+    "ALTER TABLE `Thread` ADD COLUMN `lastMessageFromEmail` TEXT",
+    "ALTER TABLE `Thread` ADD COLUMN `lastMessageFromName` TEXT",
+    "ALTER TABLE `Thread` ADD COLUMN `messageSizeTotal` INTEGER DEFAULT 0",
+    "CREATE INDEX IF NOT EXISTS ThreadSenderNameIndex ON `Thread` (lastMessageFromName)",
+    "CREATE INDEX IF NOT EXISTS ThreadSenderEmailIndex ON `Thread` (lastMessageFromEmail)",
+    "CREATE INDEX IF NOT EXISTS ThreadSizeTotalIndex ON `Thread` (messageSizeTotal)",
+    "UPDATE Thread SET lastMessageFromEmail = (SELECT m.fromEmail FROM Message m WHERE m.threadId = Thread.id AND m.draft = 0 AND m.id NOT LIKE 'deleted-%' ORDER BY m.date DESC, m.id DESC LIMIT 1)",
+    "UPDATE Thread SET lastMessageFromName = (SELECT m.fromName FROM Message m WHERE m.threadId = Thread.id AND m.draft = 0 AND m.id NOT LIKE 'deleted-%' ORDER BY m.date DESC, m.id DESC LIMIT 1)",
+    "UPDATE Thread SET messageSizeTotal = COALESCE((SELECT SUM(m.size) FROM Message m WHERE m.threadId = Thread.id AND m.id NOT LIKE 'deleted-%' AND m.size IS NOT NULL), 0)",
+};
+
 static map<string, string> COMMON_FOLDER_NAMES = {
     {"gel\xc3\xb6scht", "trash"},
     {"papierkorb", "trash"},

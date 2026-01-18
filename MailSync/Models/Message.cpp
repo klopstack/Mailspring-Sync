@@ -21,6 +21,31 @@ using namespace std;
 
 string Message::TABLE_NAME = "Message";
 
+static pair<string, string> senderStringsFrom(const json & fromField) {
+    string fromEmail = "";
+    string fromName = "";
+
+    if (fromField.is_array() && !fromField.empty()) {
+        auto f = fromField[0];
+        if (f.contains("email") && f["email"].is_string()) {
+            fromEmail = f["email"].get<string>();
+        }
+        if (f.contains("name") && f["name"].is_string()) {
+            fromName = f["name"].get<string>();
+        }
+        if (fromEmail.empty() && f.is_string()) {
+            string s = f.get<string>();
+            if (s.find('@') != string::npos) {
+                fromEmail = s;
+            } else if (fromName.empty()) {
+                fromName = s;
+            }
+        }
+    }
+
+    return {fromEmail, fromName};
+}
+
 /*
  The concept behind the "deletion placeholder" is that we need something 
  in the database with the remoteFolder and remoteUID of the message until
@@ -158,6 +183,13 @@ MessageSnapshot Message::getSnapshot() {
     s.fileCount = fileCountForThreadList();
     s.remoteXGMLabels = remoteXGMLabels();
     s.clientFolderId = clientFolderId();
+    s.size = sizeValue();
+    auto sender = senderStringsFrom(from());
+    s.fromEmail = sender.first;
+    s.fromName = sender.second;
+    s.date = date();
+    s.draft = isDraft();
+    s.isDeletionPlaceholder = isDeletionPlaceholder();
     return s;
 }
 
@@ -375,6 +407,13 @@ void Message::setRemoteFolder(Folder * folder) {
     }
 }
 
+long long Message::sizeValue() {
+    if (_data.contains("size") && _data["size"].is_number()) {
+        return (long long)_data["size"].get<long long>();
+    }
+    return 0;
+}
+
 time_t Message::syncedAt() {
     return _data["_sa"].get<time_t>();
 }
@@ -452,30 +491,15 @@ void Message::bindToQuery(SQLite::Statement * query) {
     query->bind(":gMsgId", gMsgId());
 
     // bind sender (first from entry's email and name) and size
-    string fromEmail = "";
-    string fromName = "";
-    if (from().is_array() && !from().empty()) {
-        auto f = from()[0];
-        if (f.contains("email") && f["email"].is_string()) {
-            fromEmail = f["email"].get<string>();
-        }
-        if (f.contains("name") && f["name"].is_string()) {
-            fromName = f["name"].get<string>();
-        }
-        if (fromEmail.empty() && f.is_string()) {
-            string s = f.get<string>();
-            if (s.find('@') != string::npos) {
-                fromEmail = s;
-            } else if (fromName.empty()) {
-                fromName = s;
-            }
-        }
-    }
+    auto sender = senderStringsFrom(from());
+    string fromEmail = sender.first;
+    string fromName = sender.second;
     query->bind(":fromEmail", fromEmail);
     query->bind(":fromName", fromName);
 
-    if (_data.contains("size") && _data["size"].is_number()) {
-        query->bind(":size", (long long)_data["size"].get<long long>());
+    long long messageSize = sizeValue();
+    if (messageSize > 0) {
+        query->bind(":size", messageSize);
     } else {
         query->bind(":size"); // NULL when unknown
     }
@@ -498,7 +522,7 @@ void Message::afterSave(MailStore * store) {
     }
 
     auto allLabels = store->allLabelsCache(accountId());
-    thread->applyMessageAttributeChanges(_lastSnapshot, this, allLabels);
+    thread->applyMessageAttributeChanges(_lastSnapshot, this, allLabels, store);
     store->save(thread.get());
     _lastSnapshot = getSnapshot();
 }
@@ -518,7 +542,7 @@ void Message::afterRemove(MailStore * store) {
     }
     
     auto allLabels = store->allLabelsCache(accountId());
-    thread->applyMessageAttributeChanges(_lastSnapshot, nullptr, allLabels);
+    thread->applyMessageAttributeChanges(_lastSnapshot, nullptr, allLabels, store);
     if (thread->folders().size() == 0) {
         store->remove(thread.get());
     } else {

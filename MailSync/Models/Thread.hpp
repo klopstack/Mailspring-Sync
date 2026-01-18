@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <vector>
 #include <string>
+#include <utility>
 
 #include <MailCore/MailCore.h>
 #include <SQLiteCpp/SQLiteCpp.h>
@@ -27,6 +28,8 @@
 
 using namespace nlohmann;
 using namespace std;
+
+class MailStore;
 
 
 class Thread : public MailModel {
@@ -51,6 +54,13 @@ public:
     void setStarred(int s);
     int attachmentCount();
     void setAttachmentCount(int s);
+
+    string lastMessageFromEmail();
+    void setLastMessageFromEmail(string s);
+    string lastMessageFromName();
+    void setLastMessageFromName(string s);
+    long long messageSizeTotal();
+    void setMessageSizeTotal(long long s);
     
     uint64_t searchRowId();
     void setSearchRowId(uint64_t s);
@@ -68,7 +78,7 @@ public:
     string categoriesSearchString();
 
     void resetCountedAttributes();
-    void applyMessageAttributeChanges(MessageSnapshot & old, Message * next, vector<shared_ptr<Label>> allLabels);
+    void applyMessageAttributeChanges(MessageSnapshot & old, Message * next, vector<shared_ptr<Label>> allLabels, MailStore * store = nullptr);
     void upsertReferences(SQLite::Database & db, string headerMessageId, mailcore::Array * references);
 
     string tableName();
@@ -81,6 +91,10 @@ private:
     map<string, bool> captureCategoryIDs();
     void captureInitialState();
     void addMissingParticipants(std::map<std::string, bool> & existing, json & incoming);
+    void recomputeDerivedFieldsFromStore(MailStore * store);
+    bool senderCandidateQualifies(Message * msg);
+    bool senderCandidateQualifies(MessageSnapshot & snapshot);
+    pair<string, string> senderStringsFrom(Message * msg);
 
 };
 

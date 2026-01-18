@@ -10,6 +10,7 @@
 //
 
 #include "Thread.hpp"
+#include <array>
 #include "MailUtils.hpp"
 #include "MailStore.hpp"
 
@@ -40,6 +41,9 @@ Thread::Thread(string msgId, string accountId, string subject, uint64_t gThreadI
     _data["inAllMail"] = false;
     _data["attachmentCount"] = 0;
     _data["searchRowId"] = 0;
+    _data["lastMessageFromEmail"] = "";
+    _data["lastMessageFromName"] = "";
+    _data["messageSizeTotal"] = 0;
     _data["folders"] = json::array();
     _data["labels"] = json::array();
     _data["participants"] = json::array();
@@ -87,6 +91,39 @@ int Thread::attachmentCount() {
 
 void Thread::setAttachmentCount(int s) {
     _data["attachmentCount"] = s;
+}
+
+string Thread::lastMessageFromEmail() {
+    if (_data.count("lastMessageFromEmail") && _data["lastMessageFromEmail"].is_string()) {
+        return _data["lastMessageFromEmail"].get<string>();
+    }
+    return "";
+}
+
+void Thread::setLastMessageFromEmail(string s) {
+    _data["lastMessageFromEmail"] = s;
+}
+
+string Thread::lastMessageFromName() {
+    if (_data.count("lastMessageFromName") && _data["lastMessageFromName"].is_string()) {
+        return _data["lastMessageFromName"].get<string>();
+    }
+    return "";
+}
+
+void Thread::setLastMessageFromName(string s) {
+    _data["lastMessageFromName"] = s;
+}
+
+long long Thread::messageSizeTotal() {
+    if (_data.count("messageSizeTotal") && _data["messageSizeTotal"].is_number()) {
+        return (long long)_data["messageSizeTotal"].get<long long>();
+    }
+    return 0;
+}
+
+void Thread::setMessageSizeTotal(long long s) {
+    _data["messageSizeTotal"] = s;
 }
 
 uint64_t Thread::searchRowId() {
@@ -158,13 +195,29 @@ void Thread::resetCountedAttributes() {
     setUnread(0);
     setStarred(0);
     setAttachmentCount(0);
+    setLastMessageFromEmail("");
+    setLastMessageFromName("");
+    setMessageSizeTotal(0);
     _data["folders"] = json::array();
     _data["labels"] = json::array();
 
     // now call applyMessageAttributeChanges(empty, msg) for all messages
 }
 
-void Thread::applyMessageAttributeChanges(MessageSnapshot & old, Message * next, vector<shared_ptr<Label>> allLabels) {
+void Thread::applyMessageAttributeChanges(MessageSnapshot & old, Message * next, vector<shared_ptr<Label>> allLabels, MailStore * store) {
+    bool senderInvalidated = false;
+
+    if (senderCandidateQualifies(old)) {
+        if (old.date >= lastMessageTimestamp()) {
+            senderInvalidated = true;
+        }
+    }
+
+    long long totalSize = messageSizeTotal();
+    if (old.size > 0) {
+        totalSize -= old.size;
+    }
+
     // decrement basic attributes
     setUnread(unread() - old.unread);
     setStarred(starred() - old.starred);
@@ -321,6 +374,36 @@ void Thread::applyMessageAttributeChanges(MessageSnapshot & old, Message * next,
         }
     }
     _data["inAllMail"] = folders().size() > spamOrTrash;
+
+    if (next && senderCandidateQualifies(next)) {
+        auto sender = senderStringsFrom(next);
+        if (next->date() >= lastMessageTimestamp()) {
+            setLastMessageFromEmail(sender.first);
+            setLastMessageFromName(sender.second);
+        }
+    }
+
+    if (next) {
+        long long nextSize = next->sizeValue();
+        if (nextSize > 0) {
+            totalSize += nextSize;
+        }
+    }
+
+    setMessageSizeTotal(totalSize < 0 ? 0 : totalSize);
+
+    if (senderInvalidated && !next) {
+        if (store) {
+            recomputeDerivedFieldsFromStore(store);
+        } else {
+            setLastMessageFromEmail("");
+            setLastMessageFromName("");
+        }
+    }
+
+    if (store && lastMessageFromEmail().length() == 0 && lastMessageFromName().length() == 0) {
+        recomputeDerivedFieldsFromStore(store);
+    }
 }
 
 string Thread::tableName() {
@@ -328,7 +411,7 @@ string Thread::tableName() {
 }
 
 vector<string> Thread::columnsForQuery() {
-    return vector<string>{"id", "data", "accountId", "version", "gThrId", "unread", "starred", "inAllMail", "subject", "lastMessageTimestamp", "lastMessageReceivedTimestamp", "lastMessageSentTimestamp", "firstMessageTimestamp", "hasAttachments"};
+    return vector<string>{"id", "data", "accountId", "version", "gThrId", "unread", "starred", "inAllMail", "subject", "lastMessageTimestamp", "lastMessageReceivedTimestamp", "lastMessageSentTimestamp", "firstMessageTimestamp", "hasAttachments", "lastMessageFromEmail", "lastMessageFromName", "messageSizeTotal"};
 }
 
 void Thread::bindToQuery(SQLite::Statement * query) {
@@ -343,6 +426,9 @@ void Thread::bindToQuery(SQLite::Statement * query) {
     query->bind(":lastMessageReceivedTimestamp", (double)lastMessageReceivedTimestamp());
     query->bind(":firstMessageTimestamp", (double)firstMessageTimestamp());
     query->bind(":hasAttachments", (double)attachmentCount());
+    query->bind(":lastMessageFromEmail", lastMessageFromEmail());
+    query->bind(":lastMessageFromName", lastMessageFromName());
+    query->bind(":messageSizeTotal", (long long)messageSizeTotal());
 }
 
 void Thread::afterSave(MailStore * store) {
@@ -451,6 +537,66 @@ void Thread::captureInitialState() {
     _initialCategoryIds = captureCategoryIDs();
 }
 
+bool Thread::senderCandidateQualifies(Message * msg) {
+    return msg != nullptr && !msg->isDraft() && !msg->isDeletionPlaceholder();
+}
+
+bool Thread::senderCandidateQualifies(MessageSnapshot & snapshot) {
+    return !snapshot.draft && !snapshot.isDeletionPlaceholder;
+}
+
+pair<string, string> Thread::senderStringsFrom(Message * msg) {
+    string fromEmail = "";
+    string fromName = "";
+
+    if (msg == nullptr) {
+        return {fromEmail, fromName};
+    }
+
+    auto from = msg->from();
+    if (from.is_array() && !from.empty()) {
+        auto f = from[0];
+        if (f.contains("email") && f["email"].is_string()) {
+            fromEmail = f["email"].get<string>();
+        }
+        if (f.contains("name") && f["name"].is_string()) {
+            fromName = f["name"].get<string>();
+        }
+        if (fromEmail.empty() && f.is_string()) {
+            string s = f.get<string>();
+            if (s.find('@') != string::npos) {
+                fromEmail = s;
+            } else if (fromName.empty()) {
+                fromName = s;
+            }
+        }
+    }
+
+    return {fromEmail, fromName};
+}
+
+void Thread::recomputeDerivedFieldsFromStore(MailStore * store) {
+    if (store == nullptr) {
+        return;
+    }
+
+    SQLite::Statement sender(store->db(), "SELECT fromEmail, fromName FROM Message WHERE threadId = ? AND draft = 0 AND id NOT LIKE 'deleted-%' ORDER BY date DESC, id DESC LIMIT 1");
+    sender.bind(1, id());
+    if (sender.executeStep()) {
+        setLastMessageFromEmail(sender.getColumn(0).isNull() ? "" : sender.getColumn(0).getString());
+        setLastMessageFromName(sender.getColumn(1).isNull() ? "" : sender.getColumn(1).getString());
+    } else {
+        setLastMessageFromEmail("");
+        setLastMessageFromName("");
+    }
+
+    SQLite::Statement size(store->db(), "SELECT COALESCE(SUM(size), 0) FROM Message WHERE threadId = ? AND id NOT LIKE 'deleted-%' AND size IS NOT NULL");
+    size.bind(1, id());
+    if (size.executeStep()) {
+        setMessageSizeTotal((long long)size.getColumn(0).getInt64());
+    }
+}
+
 void Thread::addMissingParticipants(std::map<std::string, bool> & existing, json & incoming) {
     for (const auto & contact : incoming) {
         if (contact.count("email")) {
@@ -462,4 +608,3 @@ void Thread::addMissingParticipants(std::map<std::string, bool> & existing, json
         }
     }
 }
-

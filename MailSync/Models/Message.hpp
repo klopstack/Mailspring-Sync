@@ -39,9 +39,15 @@ struct MessageSnapshot {
     size_t fileCount;
     json remoteXGMLabels;
     string clientFolderId;
+    long long size;
+    string fromEmail;
+    string fromName;
+    time_t date;
+    bool draft;
+    bool isDeletionPlaceholder;
 };
 
-static MessageSnapshot MessageEmptySnapshot = MessageSnapshot{false, false, false, 0, nullptr, ""};
+static MessageSnapshot MessageEmptySnapshot = MessageSnapshot{false, false, false, 0, nullptr, "", 0, "", "", 0, false, false};
 
 // Message
 
@@ -124,6 +130,8 @@ public:
     string remoteFolderId();
     void setRemoteFolder(json folder);
     void setRemoteFolder(Folder * folder);
+
+    long long sizeValue();
 
     // immutable attributes
 
