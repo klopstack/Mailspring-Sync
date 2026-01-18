@@ -59,43 +59,43 @@ static vector<string> V1_SETUP_QUERIES = {
     "CREATE VIRTUAL TABLE IF NOT EXISTS `EventSearch` USING fts5(tokenize = 'porter unicode61', content_id UNINDEXED, title, description, location, participants)",
 
     "CREATE TABLE IF NOT EXISTS Label ("
-    "id VARCHAR(40) PRIMARY KEY,"
-    "accountId VARCHAR(8),"
-    "version INTEGER,"
-    "data TEXT,"
-    "path VARCHAR(255),"
-    "role VARCHAR(255),"
-    "createdAt DATETIME,"
-    "updatedAt DATETIME)",
+      "id VARCHAR(40) PRIMARY KEY,"
+      "accountId VARCHAR(8),"
+      "version INTEGER,"
+      "data TEXT,"
+      "path VARCHAR(255),"
+      "role VARCHAR(255),"
+      "createdAt DATETIME,"
+      "updatedAt DATETIME)",
 
     "CREATE TABLE IF NOT EXISTS Folder ("
-    "id VARCHAR(40) PRIMARY KEY,"
-    "accountId VARCHAR(8),"
-    "version INTEGER,"
-    "data TEXT,"
-    "path VARCHAR(255),"
-    "role VARCHAR(255),"
-    "createdAt DATETIME,"
-    "updatedAt DATETIME)",
+       "id VARCHAR(40) PRIMARY KEY,"
+       "accountId VARCHAR(8),"
+       "version INTEGER,"
+       "data TEXT,"
+       "path VARCHAR(255),"
+       "role VARCHAR(255),"
+       "createdAt DATETIME,"
+       "updatedAt DATETIME)",
 
     "CREATE TABLE IF NOT EXISTS Thread ("
-    "id VARCHAR(42) PRIMARY KEY,"
-    "accountId VARCHAR(8),"
-    "version INTEGER,"
-    "data TEXT,"
-    "gThrId VARCHAR(20),"
-    "subject VARCHAR(500),"
-    "snippet VARCHAR(255),"
-    "unread INTEGER,"
-    "starred INTEGER,"
-    "firstMessageTimestamp DATETIME,"
-    "lastMessageTimestamp DATETIME,"
-    "lastMessageReceivedTimestamp DATETIME,"
-    "lastMessageSentTimestamp DATETIME,"
-    "inAllMail TINYINT(1),"
-    "isSearchIndexed TINYINT(1),"
-    "participants TEXT,"
-    "hasAttachments INTEGER)",
+        "id VARCHAR(42) PRIMARY KEY,"
+        "accountId VARCHAR(8),"
+        "version INTEGER,"
+        "data TEXT,"
+        "gThrId VARCHAR(20),"
+        "subject VARCHAR(500),"
+        "snippet VARCHAR(255),"
+        "unread INTEGER,"
+        "starred INTEGER,"
+        "firstMessageTimestamp DATETIME,"
+        "lastMessageTimestamp DATETIME,"
+        "lastMessageReceivedTimestamp DATETIME,"
+        "lastMessageSentTimestamp DATETIME,"
+        "inAllMail TINYINT(1),"
+        "isSearchIndexed TINYINT(1),"
+        "participants TEXT,"
+        "hasAttachments INTEGER)",
 
     "CREATE INDEX IF NOT EXISTS ThreadDateIndex ON `Thread` (lastMessageReceivedTimestamp DESC)",
     "CREATE INDEX IF NOT EXISTS ThreadUnreadIndex ON `Thread` (accountId, lastMessageReceivedTimestamp DESC) WHERE unread = 1 AND inAllMail = 1",
@@ -107,19 +107,19 @@ static vector<string> V1_SETUP_QUERIES = {
     "CREATE INDEX IF NOT EXISTS ThreadIsSearchIndexedLastMessageReceivedIndex ON `Thread` (isSearchIndexed, lastMessageReceivedTimestamp)",
 
     "CREATE TABLE IF NOT EXISTS ThreadReference ("
-    "threadId VARCHAR(42),"
-    "accountId VARCHAR(8),"
-    "headerMessageId VARCHAR(255),"
-    "PRIMARY KEY (threadId, accountId, headerMessageId))",
+        "threadId VARCHAR(42),"
+        "accountId VARCHAR(8),"
+        "headerMessageId VARCHAR(255),"
+        "PRIMARY KEY (threadId, accountId, headerMessageId))",
 
     "CREATE TABLE IF NOT EXISTS ThreadCategory ("
-    "id VARCHAR(40),"
-    "value VARCHAR(40),"
-    "inAllMail TINYINT(1),"
-    "unread TINYINT(1),"
-    "lastMessageReceivedTimestamp DATETIME,"
-    "lastMessageSentTimestamp DATETIME,"
-    "PRIMARY KEY (id, value))",
+        "id VARCHAR(40),"
+        "value VARCHAR(40),"
+        "inAllMail TINYINT(1),"
+        "unread TINYINT(1),"
+        "lastMessageReceivedTimestamp DATETIME,"
+        "lastMessageSentTimestamp DATETIME,"
+        "PRIMARY KEY (id, value))",
 
     "CREATE INDEX IF NOT EXISTS `ThreadCategory_id` ON `ThreadCategory` (`id` ASC)",
     "CREATE UNIQUE INDEX IF NOT EXISTS `ThreadCategory_val_id` ON `ThreadCategory` (`value` ASC, `id` ASC)",
@@ -133,26 +133,23 @@ static vector<string> V1_SETUP_QUERIES = {
     "CREATE TABLE IF NOT EXISTS `Account` (id VARCHAR(40) PRIMARY KEY, data BLOB, accountId VARCHAR(8), email_address TEXT)",
 
     "CREATE TABLE IF NOT EXISTS Message ("
-    "id VARCHAR(40) PRIMARY KEY,"
-    "accountId VARCHAR(8),"
-    "version INTEGER,"
-    "data TEXT,"
-    "headerMessageId VARCHAR(255),"
-    "gMsgId VARCHAR(255),"
-    "gThrId VARCHAR(255),"
-    "subject VARCHAR(500),"
-    "date DATETIME,"
-    "draft TINYINT(1),"
-    "unread TINYINT(1),"
-    "starred TINYINT(1),"
-    "remoteUID INTEGER,"
-    "remoteXGMLabels TEXT,"
-    "remoteFolderId VARCHAR(40),"
-    "replyToHeaderMessageId VARCHAR(255),"
-    "threadId VARCHAR(40),"
-    "from_email TEXT,"
-    "from_name TEXT,"
-        "size INTEGER)",
+        "id VARCHAR(40) PRIMARY KEY,"
+        "accountId VARCHAR(8),"
+        "version INTEGER,"
+        "data TEXT,"
+        "headerMessageId VARCHAR(255),"
+        "gMsgId VARCHAR(255),"
+        "gThrId VARCHAR(255),"
+        "subject VARCHAR(500),"
+        "date DATETIME,"
+        "draft TINYINT(1),"
+        "unread TINYINT(1),"
+        "starred TINYINT(1),"
+        "remoteUID INTEGER,"
+        "remoteXGMLabels TEXT,"
+        "remoteFolderId VARCHAR(40),"
+        "replyToHeaderMessageId VARCHAR(255),"
+        "threadId VARCHAR(40))",
 
     "CREATE INDEX IF NOT EXISTS MessageListThreadIndex ON Message(threadId, date ASC)",
     "CREATE INDEX IF NOT EXISTS MessageListHeaderMsgIdIndex ON Message(headerMessageId)",
@@ -228,6 +225,7 @@ static vector<string> V10_SETUP_QUERIES = {
     "ALTER TABLE `Message` ADD COLUMN `from_name` TEXT",
     "ALTER TABLE `Message` ADD COLUMN `size` INTEGER",
     "CREATE INDEX IF NOT EXISTS MessageFromIndex ON Message(accountId, `from_email`)",
+    "CREATE INDEX IF NOT EXISTS MessageFromNameIndex ON Message(accountId, `from_name`)",
     "CREATE INDEX IF NOT EXISTS MessageSizeIndex ON Message(size)",
     "CREATE INDEX IF NOT EXISTS MessageDateIndex ON Message(date DESC)",
     "CREATE INDEX IF NOT EXISTS MessageSubjectIndex ON Message(subject)",
