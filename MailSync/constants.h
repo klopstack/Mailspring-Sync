@@ -52,7 +52,7 @@ static vector<string> V1_SETUP_QUERIES = {
     "CREATE TABLE IF NOT EXISTS `_State` (id VARCHAR(40) PRIMARY KEY, value TEXT)",
 
     "CREATE TABLE IF NOT EXISTS `File` (id VARCHAR(40) PRIMARY KEY, version INTEGER, data BLOB, accountId VARCHAR(8), filename TEXT)",
-
+    
     "CREATE TABLE IF NOT EXISTS `Event` (id VARCHAR(40) PRIMARY KEY, data BLOB, accountId VARCHAR(8), calendarId VARCHAR(40), _start INTEGER, _end INTEGER, is_search_indexed INTEGER DEFAULT 0)",
     "CREATE INDEX IF NOT EXISTS EventIsSearchIndexedIndex ON `Event` (is_search_indexed, id)",
 
@@ -67,7 +67,7 @@ static vector<string> V1_SETUP_QUERIES = {
       "role VARCHAR(255),"
       "createdAt DATETIME,"
       "updatedAt DATETIME)",
-
+    
     "CREATE TABLE IF NOT EXISTS Folder ("
        "id VARCHAR(40) PRIMARY KEY,"
        "accountId VARCHAR(8),"
@@ -96,7 +96,7 @@ static vector<string> V1_SETUP_QUERIES = {
         "isSearchIndexed TINYINT(1),"
         "participants TEXT,"
         "hasAttachments INTEGER)",
-
+    
     "CREATE INDEX IF NOT EXISTS ThreadDateIndex ON `Thread` (lastMessageReceivedTimestamp DESC)",
     "CREATE INDEX IF NOT EXISTS ThreadUnreadIndex ON `Thread` (accountId, lastMessageReceivedTimestamp DESC) WHERE unread = 1 AND inAllMail = 1",
     "CREATE INDEX IF NOT EXISTS ThreadUnifiedUnreadIndex ON `Thread` (lastMessageReceivedTimestamp DESC) WHERE unread = 1 AND inAllMail = 1",
@@ -111,7 +111,7 @@ static vector<string> V1_SETUP_QUERIES = {
         "accountId VARCHAR(8),"
         "headerMessageId VARCHAR(255),"
         "PRIMARY KEY (threadId, accountId, headerMessageId))",
-
+                                                
     "CREATE TABLE IF NOT EXISTS ThreadCategory ("
         "id VARCHAR(40),"
         "value VARCHAR(40),"
@@ -120,14 +120,14 @@ static vector<string> V1_SETUP_QUERIES = {
         "lastMessageReceivedTimestamp DATETIME,"
         "lastMessageSentTimestamp DATETIME,"
         "PRIMARY KEY (id, value))",
-
+    
     "CREATE INDEX IF NOT EXISTS `ThreadCategory_id` ON `ThreadCategory` (`id` ASC)",
     "CREATE UNIQUE INDEX IF NOT EXISTS `ThreadCategory_val_id` ON `ThreadCategory` (`value` ASC, `id` ASC)",
     "CREATE INDEX IF NOT EXISTS ThreadListCategoryIndex ON `ThreadCategory` (lastMessageReceivedTimestamp DESC, value, inAllMail, unread, id)",
     "CREATE INDEX IF NOT EXISTS ThreadListCategorySentIndex ON `ThreadCategory` (lastMessageSentTimestamp DESC, value, inAllMail, unread, id)",
 
     "CREATE TABLE IF NOT EXISTS `ThreadCounts` (`categoryId` TEXT PRIMARY KEY, `unread` INTEGER, `total` INTEGER)",
-
+    
     "CREATE VIRTUAL TABLE IF NOT EXISTS `ThreadSearch` USING fts5(tokenize = 'porter unicode61', content_id UNINDEXED, subject, to_, from_, categories, body)",
 
     "CREATE TABLE IF NOT EXISTS `Account` (id VARCHAR(40) PRIMARY KEY, data BLOB, accountId VARCHAR(8), email_address TEXT)",
@@ -150,12 +150,12 @@ static vector<string> V1_SETUP_QUERIES = {
         "remoteFolderId VARCHAR(40),"
         "replyToHeaderMessageId VARCHAR(255),"
         "threadId VARCHAR(40))",
-
+    
     "CREATE INDEX IF NOT EXISTS MessageListThreadIndex ON Message(threadId, date ASC)",
     "CREATE INDEX IF NOT EXISTS MessageListHeaderMsgIdIndex ON Message(headerMessageId)",
     "CREATE INDEX IF NOT EXISTS MessageListDraftIndex ON Message(accountId, date DESC) WHERE draft = 1",
     "CREATE INDEX IF NOT EXISTS MessageListUnifiedDraftIndex ON Message(date DESC) WHERE draft = 1",
-
+    
     "CREATE TABLE IF NOT EXISTS `ModelPluginMetadata` (id VARCHAR(40), `accountId` VARCHAR(8), `objectType` VARCHAR(15), `value` TEXT, `expiration` DATETIME, PRIMARY KEY (`value`, `id`))",
     "CREATE INDEX IF NOT EXISTS `ModelPluginMetadata_id` ON `ModelPluginMetadata` (`id` ASC)",
     "CREATE INDEX IF NOT EXISTS `ModelPluginMetadata_expiration` ON `ModelPluginMetadata` (`expiration` ASC) WHERE expiration IS NOT NULL",
@@ -164,7 +164,7 @@ static vector<string> V1_SETUP_QUERIES = {
 
     "CREATE TABLE IF NOT EXISTS `MessageBody` (id VARCHAR(40) PRIMARY KEY, `value` TEXT)",
     "CREATE UNIQUE INDEX IF NOT EXISTS MessageBodyIndex ON MessageBody(id)",
-
+    
     "CREATE TABLE IF NOT EXISTS `Contact` (id VARCHAR(40) PRIMARY KEY, data BLOB, accountId VARCHAR(8), email TEXT, version INTEGER, refs INTEGER DEFAULT 0)",
     "CREATE INDEX IF NOT EXISTS ContactEmailIndex ON Contact(email)",
     "CREATE INDEX IF NOT EXISTS ContactAccountEmailIndex ON Contact(accountId, email)",
@@ -172,7 +172,7 @@ static vector<string> V1_SETUP_QUERIES = {
     "CREATE VIRTUAL TABLE IF NOT EXISTS `ContactSearch` USING fts5(tokenize = 'porter unicode61', content_id UNINDEXED, content)",
 
     "CREATE TABLE IF NOT EXISTS `Calendar` (id VARCHAR(40) PRIMARY KEY, data BLOB, accountId VARCHAR(8))",
-
+    
     "CREATE TABLE IF NOT EXISTS `Task` (id VARCHAR(40) PRIMARY KEY, version INTEGER, data BLOB, accountId VARCHAR(8), status VARCHAR(255))",
 };
 
@@ -250,7 +250,7 @@ static map<string, string> COMMON_FOLDER_NAMES = {
     {"удаленные", "trash"},
     {"kosz", "trash"},
     {"yдалённые", "trash"},
-
+    
     {"roskaposti", "spam"},
     {"skr\xc3\xa4ppost", "spam"},
     {"spamverdacht", "spam"},
@@ -266,11 +266,11 @@ static map<string, string> COMMON_FOLDER_NAMES = {
     {"спам", "spam"},
 
     {"inbox", "inbox"},
-
+    
     {"dateneintrag", "archive"},
     {"archivio", "archive"},
     {"archive", "archive"},
-
+    
     {"postausgang", "sent"},
     {"sent", "sent"},
     {"[gmail]/sent mail", "sent"},
@@ -289,7 +289,7 @@ static map<string, string> COMMON_FOLDER_NAMES = {
     {"отправленные", "sent"},
     {"sentbox", "sent"},
     {"wys&AUI-ane", "sent"},
-
+    
     {"drafts", "drafts"},
     {"draft", "drafts"},
     {"brouillons", "drafts"},
