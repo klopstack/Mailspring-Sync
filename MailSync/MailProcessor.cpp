@@ -451,6 +451,94 @@ void MailProcessor::deleteMessagesStillUnlinkedFromPhase(int phase)
     }
 }
 
+void MailProcessor::backfillMessageSenderAndSize()
+{
+    const int chunkSize = 200;
+    const int maxIterations = 5;
+    bool more = true;
+    int iterations = 0;
+
+    SQLite::Statement select(store->db(), "SELECT id, data FROM Message WHERE accountId = ? AND ((from_email IS NULL OR from_email = '') OR size IS NULL) LIMIT ?");
+    SQLite::Statement update(store->db(), "UPDATE Message SET `from_email` = ?, `from_name` = ?, size = ? WHERE id = ?");
+
+    while (more && iterations < maxIterations) {
+        iterations++;
+
+        vector<pair<string, string>> rows{};
+        select.reset();
+        select.clearBindings();
+        select.bind(1, account->id());
+        select.bind(2, chunkSize);
+        while (select.executeStep()) {
+            rows.emplace_back(select.getColumn(0).getString(), select.getColumn(1).getString());
+        }
+
+        if (rows.size() < (size_t)chunkSize) {
+            more = false;
+        }
+        if (rows.empty()) {
+            break;
+        }
+
+        MailStoreTransaction transaction{store, "backfillMessageSenderAndSize"};
+        for (auto & row : rows) {
+            const string & id = row.first;
+            const string & data = row.second;
+
+            try {
+                auto j = json::parse(data);
+
+                string fromEmail = "";
+                string fromName = "";
+                if (j.contains("from") && j["from"].is_array() && j["from"].size() > 0) {
+                    auto f = j["from"][0];
+                    if (f.contains("email") && f["email"].is_string()) {
+                        fromEmail = f["email"].get<string>();
+                    }
+                    if (f.contains("name") && f["name"].is_string()) {
+                        fromName = f["name"].get<string>();
+                    }
+                    if (fromEmail.empty() && f.is_string()) {
+                        string s = f.get<string>();
+                        if (s.find('@') != string::npos) {
+                            fromEmail = s;
+                        } else if (fromName.empty()) {
+                            fromName = s;
+                        }
+                    }
+                }
+
+                long long size = 0;
+                bool sizePresent = false;
+                if (j.contains("size") && j["size"].is_number()) {
+                    size = j["size"].get<long long>();
+                    sizePresent = true;
+                }
+
+                update.reset();
+                update.clearBindings();
+                update.bind(1, fromEmail);
+                update.bind(2, fromName);
+                if (sizePresent) {
+                    update.bind(3, size);
+                } else {
+                    update.bind(3);
+                }
+                update.bind(4, id);
+                update.exec();
+            } catch (const std::exception & ex) {
+                logger->warn("backfill sender/size parse failed for message {}: {}", id, ex.what());
+            } catch (...) {
+                logger->warn("backfill sender/size parse failed for message {}: <unknown error>", id);
+            }
+        }
+
+        // internal maintenance only; avoid emitting a flood of deltas
+        store->unsafeEraseTransactionDeltas();
+        transaction.commit();
+    }
+}
+
 void MailProcessor::appendToThreadSearchContent(Thread * thread, Message * messageToAppendOrNull, String * bodyToAppendOrNull) {
     string to = "";
     string from = "";
@@ -621,4 +709,3 @@ void MailProcessor::upsertContacts(Message * message) {
         store->save(c.get());
     }
 }
-

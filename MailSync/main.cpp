@@ -75,9 +75,9 @@ std::thread * metadataExpirationThread = nullptr;
 
 
 class AccumulatorLogger : public ConnectionLogger {
-  public:
+public:
     string accumulated = "";
-
+    
     void log(string str) {
         accumulated = accumulated + str;
     }
@@ -166,7 +166,7 @@ void runForegroundSyncWorker() {
 
 void runBackgroundSyncWorker() {
     bool started = false;
-
+    
     // wait a few seconds before launching. This avoids database locking caused by many
     // sync workers all trying to open several sqlite references at once.
     MailUtils::sleepWorkerUntilWakeOrSec(bgWorker->account->startDelay());
@@ -174,7 +174,7 @@ void runBackgroundSyncWorker() {
     while(true) {
         try {
             bgWorker->configure();
-
+            
             // mark any existing folders as busy so the UI shows us syncing mail until
             // the sync worker gets through its first iteration.
             if (!started || bgWorkerShouldMarkAll) {
@@ -287,7 +287,7 @@ int runTestAuth(shared_ptr<Account> account) {
 
     // NOTE: This method returns the account upon success but the client is not
     // reading the result. This function cannot mutate the account object.
-
+    
     IMAPSession session;
     SMTPSession smtp;
     Array * folders;
@@ -296,8 +296,8 @@ int runTestAuth(shared_ptr<Account> account) {
     string errorService = "imap";
     string containerFolderPath = account->containerFolder();
     string mainPrefix = "";
-
-
+    
+    
     // imap
     alogger.log("----------IMAP----------\n");
     MailUtils::configureSessionForAccount(session, account);
@@ -310,9 +310,9 @@ int runTestAuth(shared_ptr<Account> account) {
     if (err != ErrorNone) {
         goto done;
     }
-
+    
     mainPrefix = MailUtils::namespacePrefixOrBlank(&session);
-
+    
     err = ErrorInvalidAccount;
     for (unsigned int i = 0; i < folders->count(); i ++) {
         // Gmail accounts must have "All Mail" enabled, IMAP accounts must have an Inbox.
@@ -359,7 +359,7 @@ int runTestAuth(shared_ptr<Account> account) {
         }
         goto done;
     }
-
+    
 done:
     json resp = {
         {"error", nullptr},
@@ -567,7 +567,7 @@ void runListenOnMainThread(shared_ptr<Account> account) {
     time_t lostCINAt = 0;
 
     processor.cleanupTasksAfterLaunch();
-
+    
     while(true) {
         AutoreleasePool pool;
         json packet = {};
@@ -594,7 +594,7 @@ void runListenOnMainThread(shared_ptr<Account> account) {
                 // just exit.
                 std::exit(141);
             }
-            std::this_thread::sleep_for(std::chrono::microseconds(1000));
+			std::this_thread::sleep_for(std::chrono::microseconds(1000));
         }
 
         try {
@@ -604,7 +604,7 @@ void runListenOnMainThread(shared_ptr<Account> account) {
                 packet["task"]["v"] = 0;
                 Task task{packet["task"]};
                 processor.performLocal(&task);
-
+        
                 // interrupt the foreground sync worker to do the remote part of the task. We wait a short time
                 // because we want tasks queued back to back to run ASAP and not fight for locks with remote
                 // syncback. This also mitigates any potential remote loads+saves that aren't inside transactions
@@ -621,23 +621,23 @@ void runListenOnMainThread(shared_ptr<Account> account) {
                     }).detach();
                 }
             }
-
+            
             if (type == "cancel-task") {
                 // we can't always dequeue a task (if it's started already or potentially even finished).
                 // but if we're deleting a draft we want to dequeue saves, etc.
                 processor.cancel(packet["taskId"].get<string>());
             }
-
+            
             if (type == "wake-workers") {
                 spdlog::get("logger")->info("Waking all workers...");
 
                 // mark that the background worker should mark all the folders as busy
                 // (on it's thread!)
                 bgWorkerShouldMarkAll = true;
-
+                
                 // Wake the workers
                 MailUtils::wakeAllWorkers();
-
+                
                 // interrupt the foreground worker's IDLE call, because our network
                 // connection may have been reset and it'll sit for a while otherwise
                 // and wake-workers is called when waking from sleep
@@ -654,16 +654,6 @@ void runListenOnMainThread(shared_ptr<Account> account) {
                 if (fgWorker) fgWorker->idleInterrupt();
             }
 
-            if (type == "need-sizes") {
-                // request the sync worker to fetch sizes for these messages
-                vector<string> ids{};
-                for (auto id : packet["ids"]) {
-                    ids.push_back(id.get<string>());
-                }
-                if (fgWorker) fgWorker->idleQueueSizesToSync(ids);
-                if (fgWorker) fgWorker->idleInterrupt();
-            }
-
             if (type == "sync-calendar") {
                 static atomic<bool> runningCalendarSync { false };
                 bool expected = false;
@@ -675,6 +665,16 @@ void runListenOnMainThread(shared_ptr<Account> account) {
                         runningCalendarSync = false;
                     }).detach();
                 }
+            }
+            
+            if (type == "need-sizes") {
+                // request the sync worker to fetch sizes for these messages
+                vector<string> ids{};
+                for (auto id : packet["ids"]) {
+                    ids.push_back(id.get<string>());
+                }
+                if (fgWorker) fgWorker->idleQueueSizesToSync(ids);
+                if (fgWorker) fgWorker->idleInterrupt();
             }
 
             if (type == "test-crash") {
@@ -695,19 +695,16 @@ int main(int argc, const char * argv[]) {
 
     // indicate we use cout, not stdout
     std::cout.sync_with_stdio(false);
-
-    string exectuablePath = argv[0];
+    
+string exectuablePath = argv[0];
 
 #ifndef DEBUG
     // check path to executable in an obtuse way, prevent re-use of
     // Mailspring-Sync in products / forks not called Mailspring.
     transform(exectuablePath.begin(), exectuablePath.end(), exectuablePath.begin(), ::tolower);
     string headerMessageId = string(USAGE_STRING).substr(59, 4) + string(USAGE_IDENTITY).substr(33, 6);
-    const char *allowUnsafe = getenv("MAILSYNC_ALLOW_UNSAFE_EXECUTABLE");
-    if (!(allowUnsafe && string(allowUnsafe) == "1")) {
-        if (exectuablePath.find(headerMessageId) == string::npos) {
-            return 2;
-        }
+    if (exectuablePath.find(headerMessageId) == string::npos) {
+        return 2;
     }
 #endif
 
@@ -724,12 +721,12 @@ int main(int argc, const char * argv[]) {
 
     if (parse.error())
         return 1;
-
+    
     if (options[HELP] || argc == 0) {
         option::printUsage(std::cout, usage);
         return 0;
     }
-
+    
     // check required environment
     string eConfigDirPath = MailUtils::getEnvUTF8("CONFIG_DIR_PATH");
     string eIdentityServer = MailUtils::getEnvUTF8("IDENTITY_SERVER");
@@ -746,7 +743,7 @@ int main(int argc, const char * argv[]) {
 
     // handle --mode migrate early for speed
     string mode(options[MODE].arg);
-
+    
     if (mode == "migrate") {
         return runSingleFunctionAndExit([](){
             MailStore store;
@@ -760,7 +757,7 @@ int main(int argc, const char * argv[]) {
         return runInstallCheck();
     }
 
-    // get the account via param or stdin
+	// get the account via param or stdin
     string accountJSON = "";
     if (options[ACCOUNT].count() > 0) {
         Option ac = options[ACCOUNT];
@@ -779,12 +776,12 @@ int main(int argc, const char * argv[]) {
     }
 
 
-    if (account->valid() != "") {
-        json resp = { { "error", "Account is missing required fields:" + account->valid() } };
-        cout << "\n" << resp.dump();
-        return 1;
-    }
-
+	if (account->valid() != "") {
+		json resp = { { "error", "Account is missing required fields:" + account->valid() } };
+		cout << "\n" << resp.dump();
+		return 1;
+	}
+    
     if (mode == "reset") {
         return runSingleFunctionAndExit([&](){
             MailStore store;
@@ -792,15 +789,15 @@ int main(int argc, const char * argv[]) {
         });
     }
 
-    // get the identity via param or stdin
+	// get the identity via param or stdin
     string identityJSON = "";
-    if (options[IDENTITY].count() > 0) {
-        Option ac = options[IDENTITY];
-        identityJSON = string(options[IDENTITY].arg);
-    } else {
-        cout << "\nWaiting for Identity JSON:\n";
+	if (options[IDENTITY].count() > 0) {
+		Option ac = options[IDENTITY];
+		identityJSON = string(options[IDENTITY].arg);
+	} else {
+		cout << "\nWaiting for Identity JSON:\n";
         getline(cin, identityJSON);
-    }
+	}
     try {
         if (identityJSON == "null") {
             Identity::SetGlobal(nullptr);
@@ -813,12 +810,12 @@ int main(int argc, const char * argv[]) {
         return 1;
     }
 
-    if (Identity::GetGlobal() && !Identity::GetGlobal()->valid()) {
+	if (Identity::GetGlobal() && !Identity::GetGlobal()->valid()) {
 		json resp = { { "error", "ErrorIdentityMissingFields" } };
-        cout << "\n" << resp.dump();
-        return 1;
-    }
-
+		cout << "\n" << resp.dump();
+		return 1;
+	}
+    
     std::vector<shared_ptr<spdlog::sinks::sink>> sinks;
     bool logToFile = mode == "sync" && !options[ORPHAN];
 
@@ -828,23 +825,23 @@ int main(int argc, const char * argv[]) {
             // rotating log file with the default logger format.
             // IMPORANT: On Windows, only one sync worker can have this file open at once.
             spdlog::set_formatter(std::make_shared<SPDFormatterWithThreadNames>("%P %+"));
-#if defined(_MSC_VER)
+    #if defined(_MSC_VER)
             wstring_convert<codecvt_utf8<wchar_t>, wchar_t> convert;
             wstring logPath = convert.from_bytes(eConfigDirPath) + convert.from_bytes(FS_PATH_SEP + "mailsync-" + account->id() + ".log");
-#else
+    #else
             string logPath = eConfigDirPath + FS_PATH_SEP + "mailsync-" + account->id() + ".log";
-#endif
+    #endif
             sinks.push_back(make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1048576 * 5, 3));
             sinks.push_back(make_shared<SPDFlusherSink>());
         } else {
             // If we're attached to a debugger / console, log everything to
             // stdout in an abbreviated format.
             spdlog::set_formatter(std::make_shared<SPDFormatterWithThreadNames>("%l: %v"));
-#if defined(_MSC_VER)
+    #if defined(_MSC_VER)
             sinks.push_back(make_shared<spdlog::sinks::stdout_sink_mt>());
-#else
+    #else
             sinks.push_back(make_shared<spdlog::sinks::ansicolor_stdout_sink_mt>());
-#endif
+    #endif
         }
     } catch (spdlog::spdlog_ex& e) {
         json resp = { { "error", "Setup Failed: " + string(e.what()) } };
@@ -857,7 +854,7 @@ int main(int argc, const char * argv[]) {
     auto stderr_sink = make_shared<spdlog::sinks::stderr_sink_mt>();
     stderr_sink->set_level(spdlog::level::critical);
     sinks.push_back(stderr_sink);
-
+    
     spdlog::create("logger", std::begin(sinks), std::end(sinks));
 
     time_t createdAt = Identity::GetGlobal() ? Identity::GetGlobal()->createdAt() : time(0);
@@ -891,22 +888,22 @@ int main(int argc, const char * argv[]) {
             runCalContactsSyncWorker();
         });
         metadataThread = new std::thread([&]() {
-            SetThreadName("metadata");
-            metadataWorker = make_shared<MetadataWorker>(account);
-            metadataWorker->run();
+             SetThreadName("metadata");
+             metadataWorker = make_shared<MetadataWorker>(account);
+             metadataWorker->run();
         });
         metadataExpirationThread = new std::thread([&]() {
             SetThreadName("metadataExpiration");
             metadataExpirationWorker = make_shared<MetadataExpirationWorker>(account->id());
             metadataExpirationWorker->run();
         });
-
+        
         if (!options[ORPHAN]) {
             runListenOnMainThread(account);
         } else {
             bgThread->join(); // will block forever.
         }
     }
-
+    
     return 0;
 }

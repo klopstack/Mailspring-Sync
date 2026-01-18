@@ -199,9 +199,14 @@ void SyncWorker::idleCycleIteration() {
         return;
     }
 
-    // Periodically scan for missing sizes and queue them
+    // Periodically scan for missing senders and sizes and queue them
     iterationsSinceLaunch++;
     if ((iterationsSinceLaunch % 10) == 0) {
+        try {
+            processor->backfillMessageSenderAndSize();
+        } catch (...) {
+            // don't crash the idle loop if this fails
+        }
         try {
             // Save a process state so the UI can prompt if desired
             SQLite::Statement countQ(store->db(), "SELECT COUNT(*) FROM Message WHERE accountId = ? AND size IS NULL");

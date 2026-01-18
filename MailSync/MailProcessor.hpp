@@ -45,6 +45,7 @@ public:
     bool retrievedFileData(File * file, Data * data);
     void unlinkMessagesMatchingQuery(Query & query, int phase);
     void deleteMessagesStillUnlinkedFromPhase(int phase);
+    void backfillMessageSenderAndSize();
     
 private:
     void appendToThreadSearchContent(Thread * thread, Message * messageToAppendOrNull, String * bodyToAppendOrNull);
